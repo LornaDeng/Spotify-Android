@@ -44,6 +44,7 @@ fun PlaylistScreen(playlistViewModel: PlaylistViewModel) {
         playlistUiState = playlistUiState,
         onTapFavorite = { isFavorite ->
             Log.d("PlaylistScreen", "Tap favorite $isFavorite")
+            playlistViewModel.toggleFavorite(isFavorite)
         }
     )
 }
