@@ -1,6 +1,12 @@
 package com.laioffer.spotify.ui.playlist
 
 import android.util.Log
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
@@ -27,6 +33,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
@@ -36,15 +43,27 @@ import coil.compose.AsyncImage
 import com.laioffer.spotify.R
 import com.laioffer.spotify.datamodel.Album
 import com.laioffer.spotify.datamodel.Song
+import com.laioffer.spotify.player.PlayerUiState
+import com.laioffer.spotify.player.PlayerViewModel
 
 @Composable
-fun PlaylistScreen(playlistViewModel: PlaylistViewModel) {
+fun PlaylistScreen(
+    playlistViewModel: PlaylistViewModel,
+    playerViewModel: PlayerViewModel
+) {
     val playlistUiState by playlistViewModel.uiState.collectAsState()
+    val playerUiState by playerViewModel.uiState.collectAsState()
+
     PlaylistScreenContent(
         playlistUiState = playlistUiState,
+        playerUiState = playerUiState,
         onTapFavorite = { isFavorite ->
             Log.d("PlaylistScreen", "Tap favorite $isFavorite")
             playlistViewModel.toggleFavorite(isFavorite)
+        },
+        onTapSong = { song ->
+            playerViewModel.load(song, playlistUiState.album)
+            playerViewModel.play()
         }
     )
 }
@@ -52,25 +71,40 @@ fun PlaylistScreen(playlistViewModel: PlaylistViewModel) {
 @Composable
 private fun PlaylistScreenContent(
     playlistUiState: PlaylistUiState,
-    onTapFavorite: (Boolean) -> Unit
+    playerUiState: PlayerUiState,
+    onTapFavorite: (Boolean) -> Unit,
+    onTapSong: (Song) -> Unit
 ) {
     Column(modifier = Modifier.padding(16.dp)) {
         Cover(
             album = playlistUiState.album,
             isFavorite = playlistUiState.isFavorite,
+            isPlaying = playerUiState.isPlaying,
             onTapFavorite = onTapFavorite
         )
         PlaylistHeader(album = playlistUiState.album)
-        PlaylistContent(playlist = playlistUiState.playlist)
+        PlaylistContent(
+            playlist = playlistUiState.playlist,
+            currentSong = playerUiState.song,
+            onTapSong = onTapSong
+        )
     }
 }
 
 @Composable
-private fun PlaylistContent(playlist: List<Song>) {
+private fun PlaylistContent(
+    playlist: List<Song>,
+    currentSong: Song?,
+    onTapSong: (Song) -> Unit
+) {
     val state = rememberLazyListState()
     LazyColumn(state = state) {
         items(playlist) { song ->
-            SongRow(song = song, isPlaying = false)
+            SongRow(
+                song = song,
+                isPlaying = currentSong == song,
+                onTapSong = onTapSong
+            )
         }
         item {
             Spacer(modifier = Modifier.height(40.dp))
@@ -79,9 +113,16 @@ private fun PlaylistContent(playlist: List<Song>) {
 }
 
 @Composable
-private fun SongRow(song: Song, isPlaying: Boolean) {
+private fun SongRow(
+    song: Song,
+    isPlaying: Boolean,
+    onTapSong: (Song) -> Unit
+) {
     Row(
-        modifier = Modifier.padding(vertical = 8.dp),
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable { onTapSong(song) }
+            .padding(vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Column(modifier = Modifier.weight(1f)) {
@@ -126,8 +167,20 @@ private fun PlaylistHeader(album: Album) {
 private fun Cover(
     album: Album,
     isFavorite: Boolean,
+    isPlaying: Boolean,
     onTapFavorite: (Boolean) -> Unit
 ) {
+    val transition = rememberInfiniteTransition()
+    val animatedRotation by transition.animateFloat(
+        initialValue = 0f,
+        targetValue = -360f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 5_000, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart
+        )
+    )
+    val rotation = if (isPlaying) animatedRotation else 0f
+
     Column(modifier = Modifier.fillMaxWidth()) {
         Box(modifier = Modifier.fillMaxWidth()) {
             Icon(
@@ -159,6 +212,7 @@ private fun Cover(
                     modifier = Modifier
                         .fillMaxWidth(0.6f)
                         .aspectRatio(1f)
+                        .graphicsLayer(rotationZ = rotation)
                         .align(Alignment.Center)
                         .clip(CircleShape),
                     contentScale = ContentScale.FillBounds

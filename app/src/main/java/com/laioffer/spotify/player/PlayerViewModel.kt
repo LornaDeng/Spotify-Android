@@ -1,0 +1,89 @@
+package com.laioffer.spotify.player
+
+import android.util.Log
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
+import com.google.android.exoplayer2.ExoPlayer
+import com.google.android.exoplayer2.MediaItem
+import com.google.android.exoplayer2.PlaybackException
+import com.google.android.exoplayer2.Player
+import com.laioffer.spotify.datamodel.Album
+import com.laioffer.spotify.datamodel.Song
+import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
+import javax.inject.Inject
+
+@HiltViewModel
+class PlayerViewModel @Inject constructor(
+    private val exoPlayer: ExoPlayer
+) : ViewModel(), Player.Listener {
+
+    private val _uiState = MutableStateFlow(PlayerUiState())
+    val uiState: StateFlow<PlayerUiState> = _uiState.asStateFlow()
+
+    init {
+        exoPlayer.addListener(this)
+        viewModelScope.launch {
+            while (isActive) {
+                if (exoPlayer.isPlaying) {
+                    _uiState.value = _uiState.value.copy(
+                        currentMs = exoPlayer.currentPosition,
+                        durationMs = exoPlayer.duration.coerceAtLeast(0L)
+                    )
+                }
+                delay(1_000L)
+            }
+        }
+    }
+
+    fun load(song: Song, album: Album) {
+        _uiState.value = PlayerUiState(album = album, song = song)
+        exoPlayer.setMediaItem(MediaItem.fromUri(song.src))
+        exoPlayer.prepare()
+    }
+
+    fun play() {
+        exoPlayer.play()
+    }
+
+    fun pause() {
+        exoPlayer.pause()
+    }
+
+    fun seekTo(positionMs: Long) {
+        val duration = _uiState.value.durationMs
+        val targetPosition = if (duration > 0L) {
+            positionMs.coerceIn(0L, duration)
+        } else {
+            positionMs.coerceAtLeast(0L)
+        }
+        _uiState.value = _uiState.value.copy(currentMs = targetPosition)
+        exoPlayer.seekTo(targetPosition)
+    }
+
+    override fun onIsPlayingChanged(isPlaying: Boolean) {
+        _uiState.value = _uiState.value.copy(isPlaying = isPlaying)
+    }
+
+    override fun onPlayerError(error: PlaybackException) {
+        Log.e("SpotifyPlayer", "Playback failed", error)
+    }
+
+    override fun onCleared() {
+        exoPlayer.removeListener(this)
+        super.onCleared()
+    }
+}
+
+data class PlayerUiState(
+    val album: Album? = null,
+    val song: Song? = null,
+    val isPlaying: Boolean = false,
+    val currentMs: Long = 0L,
+    val durationMs: Long = 0L
+)
