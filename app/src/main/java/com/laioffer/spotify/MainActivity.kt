@@ -3,8 +3,6 @@ package com.laioffer.spotify
 import dagger.hilt.android.AndroidEntryPoint
 
 import android.os.Bundle
-import androidx.activity.ComponentActivity
-import androidx.activity.compose.setContent
 import androidx.appcompat.app.AppCompatActivity
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -28,18 +26,27 @@ import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import androidx.navigation.fragment.NavHostFragment
 import androidx.navigation.ui.NavigationUI
+import androidx.lifecycle.lifecycleScope
 import com.google.android.material.bottomnavigation.BottomNavigationView
+import com.laioffer.spotify.database.DatabaseDao
+import com.laioffer.spotify.datamodel.Album
 import com.laioffer.spotify.ui.theme.SpotifyTheme
 import android.util.Log
 import com.laioffer.spotify.network.NetworkApi
-import com.laioffer.spotify.network.NetworkModule
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import javax.inject.Inject
 
 // customized extend AppCompatActivity
 @AndroidEntryPoint
 class MainActivity : AppCompatActivity() {
+    @Inject
+    lateinit var api: NetworkApi
+
+    @Inject
+    lateinit var databaseDao: DatabaseDao
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         /* setContent {
@@ -63,12 +70,32 @@ class MainActivity : AppCompatActivity() {
         navController.setGraph(R.navigation.nav_graph)
 
         NavigationUI.setupWithNavController(navView, navController)
+        navView.setOnItemSelectedListener { item ->
+            NavigationUI.onNavDestinationSelected(item, navController)
+            navController.popBackStack(item.itemId, inclusive = false)
+            true
+        }
 
         // Test retrofit
-        GlobalScope.launch(Dispatchers.IO) {
-            val api = NetworkModule.provideRetrofit().create(NetworkApi::class.java)
+        lifecycleScope.launch(Dispatchers.IO) {
             val response = api.getHomeFeed().execute().body()
             Log.d("Network", response.toString())
+        }
+
+        // Room integration example. This runs every time the activity is created.
+        lifecycleScope.launch {
+            withContext(Dispatchers.IO) {
+                databaseDao.favoriteAlbum(
+                    Album(
+                        id = 1,
+                        name = "Hexagonal",
+                        year = "2008",
+                        cover = "https://upload.wikimedia.org/wikipedia/en/6/6d/Leessang-Hexagonal_%28cover%29.jpg",
+                        artists = "Leessang",
+                        description = "Leessang was a South Korean hip hop duo composed of Gary and Gil."
+                    )
+                )
+            }
         }
     }
 }
